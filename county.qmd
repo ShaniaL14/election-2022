@@ -1,49 +1,42 @@
 ---
-title: "2022 Florida Gubernatorial Election Results"
+title: "2022 Florida Gubernatorial Election"
 format: html
 execute:
-  echo: true
+  echo: false
   warning: false
   message: false
 ---
 
 ```{r}
-#| label: setup
 library(tidyverse)
+library(plotly)
 library(maps)
-```
 
-## Load and Clean Data
-
-```{r}
-#| label: clean-data
-# Read the county-level election results
 county_data <- read_csv("data/20221108__fl__general__county.csv", show_col_types = FALSE)
 
-# Filter for the Governor race and calculate vote margins
 gov_results <- county_data |>
   filter(office == "Governor", party %in% c("REP", "DEM")) |>
   select(county, party, votes) |>
   pivot_wider(names_from = party, values_from = votes) |>
   mutate(
     total = REP + DEM,
-    rep_margin = (REP - DEM) / total * 100,
-    clean_county = str_to_lower(str_remove_all(county, "[^a-zA-Z]"))
+    rep_pct = round((REP / total) * 100, 1),
+    dem_pct = round((DEM / total) * 100, 1),
+    rep_margin = rep_pct - dem_pct,
+    clean_county = str_to_lower(str_remove_all(county, "[^a-zA-Z]")),
+    tooltip_text = paste0(
+      "<b>", county, " County</b><br>",
+      "DeSantis (REP): ", scales::comma(REP), " (", rep_pct, "%)<br>",
+      "Crist (DEM): ", scales::comma(DEM), " (", dem_pct, "%)<br>",
+      "Margin: ", ifelse(rep_margin > 0, paste0("+", round(rep_margin, 1), "% R"), paste0("+", round(abs(rep_margin), 1), "% D"))
+    )
   )
 
-# Get Florida county geographic boundaries and join election results
 fl_map <- map_data("county", "florida") |>
   mutate(clean_county = str_to_lower(str_remove_all(subregion, "[^a-zA-Z]"))) |>
   left_join(gov_results, by = "clean_county")
-```
 
-## Florida Governor Election Map
-
-```{r}
-#| label: plot-map
-#| fig-width: 8
-#| fig-height: 6
-ggplot(fl_map, aes(x = long, y = lat, group = group, fill = rep_margin)) +
+p <- ggplot(fl_map, aes(x = long, y = lat, group = group, fill = rep_margin, text = tooltip_text)) +
   geom_polygon(color = "white", linewidth = 0.2) +
   coord_quickmap() +
   scale_fill_gradient2(
@@ -51,19 +44,19 @@ ggplot(fl_map, aes(x = long, y = lat, group = group, fill = rep_margin)) +
     mid = "#f7f7f7",
     high = "#b2182b",
     midpoint = 0,
-    name = "Margin",
-    labels = \(x) ifelse(x > 0, paste0("+", round(x), "% R"), paste0("+", round(abs(x)), "% D"))
+    name = "Margin (%)"
   ) +
   theme_void() +
   labs(
-    title = "2022 Florida Gubernatorial Election Results by County",
-    subtitle = "Vote margin between Ron DeSantis (R) and Charlie Crist (D)",
-    caption = "Source: Florida Division of Elections"
+    title = "2022 Florida Gubernatorial Election Results by County"
   ) +
   theme(
-    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray30"),
-    plot.caption = element_text(size = 8, color = "gray50", hjust = 0.9),
-    legend.position = "bottom"
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
+  )
+
+ggplotly(p, tooltip = "text") |>
+  layout(
+    xaxis = list(visible = FALSE, showgrid = FALSE),
+    yaxis = list(visible = FALSE, showgrid = FALSE)
   )
 ```
