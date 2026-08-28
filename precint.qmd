@@ -1,0 +1,68 @@
+---
+title: "2022 Florida Gubernatorial Election in Sarasota County"
+author: "Beginning Data Science Student"
+format: html
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(sf)
+
+# Load precinct boundary polygons from Sarasota County GIS
+precinct_url <- "https://ags3.scgov.net/server/rest/services/Hosted/VotingPrecinct/FeatureServer/0/query?where=1=1&outFields=*&f=geojson"
+precincts_sf <- read_sf(precinct_url)
+
+# Load Florida precinct election results
+results <- read_csv("data/20221108__fl__general__precinct.csv", show_col_types = FALSE)
+```
+
+```{r}
+#| label: process-data
+# Filter for Sarasota County Governor race and calculate vote shares
+sarasota_gov <- results |>
+  filter(county == "Sarasota", office == "Governor") |>
+  filter(!candidate %in% c("OverVotes", "UnderVotes")) |>
+  mutate(precinct = as.integer(precinct)) |>
+  group_by(precinct) |>
+  summarize(
+    total_votes = sum(votes, na.rm = TRUE),
+    desantis_votes = sum(votes[party == "REP"], na.rm = TRUE),
+    crist_votes = sum(votes[party == "DEM"], na.rm = TRUE),
+    desantis_pct = desantis_votes / total_votes * 100,
+    .groups = "drop"
+  )
+
+# Join spatial geometry with election results
+sarasota_map_data <- precincts_sf |>
+  left_join(sarasota_gov, by = c("precinctnumber" = "precinct"))
+```
+
+```{r}
+#| label: map
+# Plot the precinct-level results
+ggplot(sarasota_map_data) +
+  geom_sf(aes(fill = desantis_pct), color = "white", linewidth = 0.2) +
+  scale_fill_gradient2(
+    low = "#2166ac",
+    mid = "white",
+    high = "#b2182b",
+    midpoint = 50,
+    name = "DeSantis %"
+  ) +
+  labs(
+    title = "2022 Governor Election Results: Sarasota County",
+    subtitle = "Precinct-level vote share for Ron DeSantis (REP)",
+    caption = "Data: Florida Division of Elections & Sarasota County GIS"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 11),
+    legend.position = "right"
+  )
+```
